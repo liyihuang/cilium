@@ -129,24 +129,26 @@ func setDefaultPrefix(logger *slog.Logger, cfg *option.DaemonConfig, device stri
 
 	if cfg.EnableIPv6 {
 		isIPv6 := true
-		ipv4range := node.IPv4AllocCIDR
 		ipv6range := node.IPv6AllocCIDR
 
+		// Find a IPv6 node address first
+		addr, err := firstGlobalV6Addr(device, node.GetCiliumInternalIP(isIPv6), preferPublicIP)
+		if err != nil {
+			return
+		}
+
+		if addr == nil {
+			addr = makeIPv6HostIP(logger)
+		}
 		if node.GetNodeIP(isIPv6) == nil {
-			// Find a IPv6 node address first
-			addr, _ := firstGlobalV6Addr(device, node.GetCiliumInternalIP(isIPv6), preferPublicIP)
-			if addr == nil {
-				addr = makeIPv6HostIP(logger)
-			}
+
 			node.SetNodeInternalIP(addr)
 		}
 
-		if ipv6range == nil && ipv4range != nil {
-			// The IPv6 allocation should be derived from the IPv4 allocation.
-			ip := ipv4range.IP
-			v6range := fmt.Sprintf("%s%02x%02x:%02x%02x:0:0/%d",
-				cfg.IPv6ClusterAllocCIDRBase, ip[0], ip[1], ip[2], ip[3], 96)
+		if ipv6range == nil {
 
+			v6range := fmt.Sprintf("%s%02x%02x:%02x%02x:0:0/%d",
+				cfg.IPv6ClusterAllocCIDRBase, addr[0], addr[1], addr[2], addr[3], 96)
 			_, ip6net, err := net.ParseCIDR(v6range)
 			if err != nil {
 				logging.Panic(logger, "BUG: Invalid default IPv6 prefix",
